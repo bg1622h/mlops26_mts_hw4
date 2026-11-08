@@ -1,0 +1,44 @@
+name: "mts_fraud_dbt"
+version: "1.0.0"
+config-version: 2
+
+profile: "mts_fraud_dbt"
+
+model-paths: ["models"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+dispatch:
+  - macro_namespace: dbt_date
+    search_order: [mts_fraud_dbt, dbt_date]
+
+vars:
+  large_transaction_amount: 1000
+  high_fraud_rate: 5
+  suspicious_merchant_min_frauds: 3
+
+models:
+  mts_fraud_dbt:
+    staging:
+      +materialized: view
+      +tags: ["staging"]
+    marts:
+      +materialized: table
+      +engine: MergeTree()
+      mart_daily_state_metrics:
+        +order_by: "(transaction_date, us_state)"
+      mart_fraud_by_category:
+        +order_by: cat_id
+      mart_fraud_by_state:
+        +order_by: us_state
+      mart_customer_risk_profile:
+        +order_by: customer_id
+      mart_hourly_fraud_pattern:
+        +order_by: "(day_of_week, transaction_hour)"
+      mart_merchant_analytics:
+        +order_by: merch
+      +tags: ["marts"]

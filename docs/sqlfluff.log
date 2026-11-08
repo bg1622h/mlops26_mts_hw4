@@ -1,0 +1,6 @@
+﻿=== [dbt templater] Sorting Nodes...
+=== [dbt templater] Compiling dbt project...
+=== [dbt templater] Project Compiled.
+WARNING    Skipped file D:\pycharm_projects\mlops26_mts_hw4\dbt\macros\amount_bucket.sql because it is a macro 
+WARNING    Skipped file D:\pycharm_projects\mlops26_mts_hw4\dbt\macros\clickhouse_day_of_week.sql because it is a macro 
+All Finished!

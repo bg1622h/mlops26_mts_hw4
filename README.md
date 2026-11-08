@@ -1,148 +1,105 @@
-# MLOps homework 2
+# MLOps homework 4: dbt
 
-Скрипт делает загрузку данных из csv файла, загрузку данных в kafka и загрузку данных в БД clickhouse,
+Код строит аналитические витрины по транзакциям и признаку мошенничества.
+Данные загружаются из CSV через Kafka в ClickHouse, затем обрабатываются моделями dbt.
 
-В базе данных можно выполнять запросы поиска категории наибольшей транзакции по каждому штату.
+| Витрина | Метрики                                                                                  |
+| --- |------------------------------------------------------------------------------------------|
+| `mart_daily_state_metrics` | Количество, сумма, средний чек, P95 и доля крупных транзакций по дате/штату              |
+| `mart_fraud_by_category` | Количество транзакций и мошеннических транзакций, fraud rate и суммы по категориям       |
+| `mart_fraud_by_state` | Fraud rate, уникальные клиенты/продавцы и суммы по штатам                                |
+| `mart_customer_risk_profile` | Активность клиента, первая/последняя транзакции, средний чек, fraud rate и уровень риска |
+| `mart_hourly_fraud_pattern` | Показатели по дню недели и часу, флаг повышенного риска окна                             |
+| `mart_merchant_analytics` | Оборот, fraud rate и флаг подозрительности продавца                                      |
 
-Также есть возможность запустить оптимизацию таблицы и уже задавать запросы оптимизированной таблице.
+После загрузки новых данных витрины обновляются командой `dbt build`.
 
-[Данные с Kaggle](https://www.kaggle.com/t/1918f3f6435300327d38d6c596f97394) нужно положить в папку `data`, в качестве примера там лежит test.csv из соревнования.
+## Подготовка
 
-Команды выполнять из корня проекта.
+CSV файл положить в `data/train.csv`.
 
-## Файлы проекта
-
-| Файл | Назначение |
-| --- | --- |
-| `docker-compose.yml` | Kafka, Zookeeper, ClickHouse и Kafka UI |
-| `requirements.txt` | Зависимости Python-скриптов |
-| `scripts/read_data.py` | Преобразование CSV в JSON и отправка в Kafka |
-| `scripts/export_results.py` | Выполнение SQL и сохранение результата в CSV |
-| `sql/create_tables.sql` | Базовая схема ClickHouse и загрузка из Kafka |
-| `sql/optimize_db.sql` | Оптимизированная таблица и предварительные агрегаты |
-| `sql/get_max_transactions_base.sql` | Запрос по исходной таблице |
-| `sql/get_max_transactions_optimized.sql` | Запрос по предварительным агрегатам |
-
-Данные проходят из топика `transactions` через Kafka-таблицу `hw2.transaction_queue` и materialized view в постоянную таблицу `hw2.transactions`.
+В `dbt/profiles.yml` должен быть профиль подключения. 
 
 ## Linux — Bash
 
 ```bash
-# Python-окружение
+# Окружение
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -r dbt/requirements.txt
 
-# Сборка и запуск
+# Сборка
 docker compose up -d --build
 docker compose ps --all
-# Дождаться healthy у Kafka и ClickHouse, Exited (0) у kafka-setup
 
-docker compose exec -T clickhouse clickhouse-client --multiquery < sql/create_tables.sql
+# загрузка
+docker compose exec -T clickhouse clickhouse-client --multiquery < sql/create_tables_dbt.sql
+python scripts/read_data.py --csv data/train.csv --schema dbt
 
-# CSV -> Kafka -> DB (ClickHouse)
-python scripts/read_data.py --csv data/test.csv
+docker compose exec clickhouse clickhouse-client --query "SELECT count(), sum(target) FROM transactions_db.transactions"
 
-# Проверка: для test.csv — 262144 строки
-docker compose exec clickhouse clickhouse-client --query "SELECT count() FROM hw2.transactions"
-
-# Базовый запрос
-python scripts/export_results.py --query-file sql/get_max_transactions_base.sql --output results/results_base.csv
-
-# Оптимизация: выполнить один раз после полной загрузки
-docker compose exec -T clickhouse clickhouse-client --multiquery < sql/optimize_db.sql
-
-# Результат из оптимизированных и заранее посчитанных таблиц
-python scripts/export_results.py --query-file sql/get_max_transactions_optimized.sql --output results/results_optimized.csv
-
-# Время запросов, секунды
-docker compose exec -T clickhouse clickhouse-client --time --format Null < sql/get_max_transactions_base.sql
-docker compose exec -T clickhouse clickhouse-client --time --format Null < sql/get_max_transactions_optimized.sql
+# dbt
+dbt deps --project-dir dbt --profiles-dir dbt
+dbt debug --project-dir dbt --profiles-dir dbt
+dbt build --project-dir dbt --profiles-dir dbt --no-partial-parse
 ```
 
 ## Windows — PowerShell
 
 ```powershell
-# Python-окружение
-python -m venv .venv
+# Окружение
+if (!(Test-Path .\.venv\Scripts\python.exe)) {
+    python -m venv .venv
+}
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -r dbt/requirements.txt
 
-# Сборка и запуск
+# Сборка
 docker compose up -d --build
 docker compose ps --all
 # Дождаться healthy у Kafka и ClickHouse, Exited (0) у kafka-setup
 
-Get-Content .\sql\create_tables.sql -Raw | docker compose exec -T clickhouse clickhouse-client --multiquery
+# Загрузка
+Get-Content .\sql\create_tables_dbt.sql -Raw | docker compose exec -T clickhouse clickhouse-client --multiquery
+python .\scripts\read_data.py --csv .\data\train.csv --schema dbt
 
-# CSV -> Kafka -> DB (ClickHouse)
-python .\scripts\read_data.py --csv .\data\test.csv
+docker compose exec clickhouse clickhouse-client --query "SELECT count(), sum(target) FROM transactions_db.transactions"
 
-# Проверка: для test.csv — 262144 строки
-docker compose exec clickhouse clickhouse-client --query "SELECT count() FROM hw2.transactions"
-
-# Базовый запрос
-python .\scripts\export_results.py --query-file .\sql\get_max_transactions_base.sql --output .\results\results_base.csv
-
-# Оптимизация: выполнить один раз после полной загрузки
-Get-Content .\sql\optimize_db.sql -Raw | docker compose exec -T clickhouse clickhouse-client --multiquery
-
-# Результат из оптимизированных и заранее посчитанных таблиц
-python .\scripts\export_results.py --query-file .\sql\get_max_transactions_optimized.sql --output .\results\results_optimized.csv
-
-# Время запросов, секунды
-Get-Content .\sql\get_max_transactions_base.sql -Raw | docker compose exec -T clickhouse clickhouse-client --time --format Null
-Get-Content .\sql\get_max_transactions_optimized.sql -Raw | docker compose exec -T clickhouse clickhouse-client --time --format Null
+# dbt
+dbt deps --project-dir dbt --profiles-dir dbt
+dbt debug --project-dir dbt --profiles-dir dbt
+dbt build --project-dir dbt --profiles-dir dbt --no-partial-parse
 ```
 
-## Проверка результата
+Если CSV уже загружен, повторно запускать producer не нужно: повторная отправка добавит дубликаты.
+Для обновления витрин достаточно `dbt build --project-dir dbt --profiles-dir dbt`.
 
-Выполнять команды последовательно. 
+Unit tests находятся в `dbt/models/staging/stg_transactions.yml`, в блоке `unit_tests`:
+проверка границ сегментов суммы и проверка нормализации/дня недели.
 
-Контейнеры используют готовые Docker-образы;
-
-После завершения producer дождаться загрузки ClickHouse: для одной отправки приложенного `test.csv` в пустую таблицу ожидается **262144 строки**.
-
-Повторный запуск producer добавляет строки повторно.
-
-Экспорты создают два файла:
-
-- `results/results_base.csv` — результат базового запроса;
-- `results/results_optimized.csv` — результат оптимизированного.
-
-Результат содержит `state`, `category_of_largest_transaction`, `largest_transaction_amount`. 
-
-Для примера — **51 строка данных**, по одной на каждое значение `state`. 
-
-При равных максимальных суммах `argMax` может выбрать любую из соответствующих категорий.
-
-## Как работает оптимизация
-
-- `LowCardinality(String)` хранит повторяющиеся штаты и категории через словарь.
-- Сортировка `(state, category, transaction_time)` группирует близко записи одного штата и категории.
-- `AggregatingMergeTree` хранит состояния максимумов, чтобы итоговый запрос не перечитывал все транзакции.
-- Materialized views автоматически обрабатывают новые вставки в `hw2.transactions`.
-
-`optimize_db.sql` выполнить один раз после полной загрузки, не отправляя новые данные во время его выполнения. 
-
-Повторно применять скрипт после следующих загрузок не нужно.
-
-Исходная таблица сохраняется для сравнения. 
-
-## Сравнение размера таблиц
-
-Linux — Bash:
+## Документация для dbt
 
 ```bash
-docker compose exec clickhouse clickhouse-client --query "SELECT table, sum(rows) AS rows, formatReadableSize(sum(bytes_on_disk)) AS disk_size FROM system.parts WHERE database = 'hw2' AND active AND table IN ('transactions', 'transactions_optimized', 'transactions_state_max') GROUP BY table ORDER BY table"
+dbt docs generate --project-dir dbt --profiles-dir dbt
+dbt docs serve --project-dir dbt --profiles-dir dbt --port 8081
 ```
 
-Windows — PowerShell:
+Открыть http://localhost:8081, нажать `View Lineage Graph`.
+
+Логи Linux:
+
+```bash
+mkdir -p docs
+dbt --version > docs/dbt_version.log
+dbt test --project-dir dbt --profiles-dir dbt --no-use-colors > docs/dbt_test.log 2>&1
+cat docs/dbt_test.log
+```
+
+Логи PowerShell:
 
 ```powershell
-docker compose exec clickhouse clickhouse-client --query "SELECT table, sum(rows) AS rows, formatReadableSize(sum(bytes_on_disk)) AS disk_size FROM system.parts WHERE database = 'hw2' AND active AND table IN ('transactions', 'transactions_optimized', 'transactions_state_max') GROUP BY table ORDER BY table"
+New-Item -ItemType Directory -Force .\docs | Out-Null
+dbt --version | Out-File -Encoding utf8 .\docs\dbt_version.log
+dbt test --project-dir dbt --profiles-dir dbt --no-use-colors 2>&1 | Tee-Object -Variable dbtTestLog
+$dbtTestLog | Out-File -Encoding utf8 .\docs\dbt_test.log
 ```
-
-Команды с `--time --format Null` выше измеряют время запросов без вывода результатов. 
-
-Kafka UI: http://localhost:8080 · Проверка ClickHouse: http://localhost:8123/ping. Kafka с хоста: `localhost:9095`, внутри Docker: `kafka:9092`.

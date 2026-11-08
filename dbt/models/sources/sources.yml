@@ -1,0 +1,37 @@
+version: 2
+
+sources:
+  - name: transactions_db
+    description: "Данные транзакций"
+    schema: "{{ env_var('DBT_SOURCE_SCHEMA', 'transactions_db') }}"
+    tables:
+      - name: transactions
+        identifier: "{{ env_var('DBT_SOURCE_TABLE', 'transactions') }}"
+        description: "Исходная таблица"
+        columns:
+          - name: transaction_time
+            description: "Дата и время транзакции"
+          - name: merch
+            description: "Продавец"
+          - name: cat_id
+            description: "Категория транзакции"
+          - name: amount
+            description: "Сумма транзакции"
+          - name: name_1
+            description: "Имя клиента"
+          - name: name_2
+            description: "Фамилия клиента"
+          - name: gender
+            description: "Пол клиента"
+          - name: us_state
+            description: "Код штата"
+          - name: lat
+            description: "Координаты клиента (широта)"
+          - name: lon
+            description: "Координаты клиента (долгота)"
+          - name: merchant_lat
+            description: "Координаты продавца (широта)"
+          - name: merchant_lon
+            description: "Координаты продавца (долгота)"
+          - name: target
+            description: "Является ли транзакция мошеннической?"

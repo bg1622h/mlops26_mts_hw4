@@ -1,0 +1,12 @@
+mts_fraud_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      schema: transactions_dbt
+      host: "{{ env_var('CLICKHOUSE_HOST', 'localhost') }}"
+      port: 8123
+      user: "{{ env_var('CLICKHOUSE_USER', 'default') }}"
+      password: "{{ env_var('CLICKHOUSE_PASSWORD', '') }}"
+      secure: false
+      threads: 4
